@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>画像・動画ドット絵＆モザイクコンバーター</title>
+    <style>
+        :root {
+            --primary-color: #4a90e2;
+            --primary-hover: #357abd;
+            --bg-color: #f5f7fa;
+            --card-bg: #ffffff;
+            --text-color: #333333;
+            --border-color: #dddddd;
+        }
+
+        body {
+            font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            max-width: 1000px;
+            width: 100%;
+            background: var(--card-bg);
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            box-sizing: border-box;
+        }
+
+        h1 {
+            text-align: center;
+            margin-top: 0;
+            color: #2c3e50;
+            font-size: 24px;
+        }
+
+        .upload-area {
+            border: 2px dashed var(--border-color);
+            border-radius: 8px;
+            padding: 30px;
+            text-align: center;
+            cursor: pointer;
+            background: #fafafa;
+            transition: border-color 0.3s;
+            margin-bottom: 25px;
+        }
+
+        .upload-area:hover {
+            border-color: var(--primary-color);
+        }
+
+        .upload-area p {
+            margin: 0;
+            font-size: 16px;
+            color: #666;
+        }
+
+        #file-input {
+            display: none;
+        }
+
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 20px;
+            margin-bottom: 25px;
+            background: #f9f9f9;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #eee;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .control-group label {
+            font-weight: bold;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .control-group.disabled {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+
+        .input-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .input-row input[type="range"] {
+            flex: 1;
+        }
+
+        .number-input {
+            width: 70px;
+            padding: 6px 8px;
+            font-size: 14px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            text-align: right;
+            box-sizing: border-box;
+        }
+
+        .unit {
+            font-size: 13px;
+            color: #666;
+            min-width: 24px;
+        }
+
+        .btn {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            font-size: 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            width: 100%;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .btn:hover {
+            background-color: var(--primary-hover);
+        }
+
+        .btn:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+
+        .workspace {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 25px;
+        }
+
+        .view-box {
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+            background: #fff;
+            min-height: 200px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .view-box h3 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            font-size: 16px;
+            color: #555;
+            width: 100%;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 8px;
+        }
+
+        /* 横スクロール対応 (overflow-x を auto に設定) */
+        .canvas-container {
+            width: 100%;
+            max-height: 400px;
+            overflow-x: auto;
+            overflow-y: auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        canvas, img, video {
+            max-width: none; /* コンテナからはみ出たときにスクロールさせるため none に変更 */
+            max-height: 380px;
+            height: auto;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .action-area {
+            margin-top: 20px;
+            width: 100%;
+        }
+
+        #status-text {
+            text-align: center;
+            font-size: 14px;
+            color: #666;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>画像・動画ドット絵＆モザイクコンバーター</h1>
+
+    <div class="upload-area" id="drop-zone">
+        <p>ここに画像または動画をドラッグ＆ドロップ、またはクリックして選択</p>
+        <input type="file" id="file-input" accept="image/*,video/*">
+    </div>
+
+    <div class="controls">
+        <div class="control-group">
+            <label for="pixel-size">モザイク・ドットの大きさ</label>
+            <div class="input-row">
+                <input type="range" id="pixel-size" min="2" max="128" value="12" step="1">
+                <input type="number" id="pixel-size-num" class="number-input" min="2" max="128" value="12" step="1">
+                <span class="unit">px</span>
+            </div>
+        </div>
+        <div class="control-group" id="color-control-group">
+            <label for="color-count">減色数 (カラー制限)</label>
+            <div class="input-row">
+                <input type="range" id="color-count" min="2" max="1024" value="64" step="1">
+                <input type="number" id="color-count-num" class="number-input" min="2" max="1024" value="64" step="1">
+                <span class="unit">色</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="workspace">
+        <div class="view-box">
+            <h3>オリジナル</h3>
+            <div class="canvas-container">
+                <img id="source-img" src="" alt="ファイルが選択されていません" style="display: none;">
+                <video id="source-video" src="" controls style="display: none;"></video>
+            </div>
+        </div>
+        <div class="view-box">
+            <h3>プレビュー結果</h3>
+            <div class="canvas-container">
+                <canvas id="output-canvas"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="action-area">
+        <button id="download-btn" class="btn" disabled>結果を保存する</button>
+        <button id="download-video-btn" class="btn" style="display: none; background-color: #27ae60;" disabled>モザイク動画を再生しながら書き出し (MP4/音声付き)</button>
+        <div id="status-text"></div>
+    </div>
+</div>
+
+<script>
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const sourceImg = document.getElementById('source-img');
+    const sourceVideo = document.getElementById('source-video');
+    const outputCanvas = document.getElementById('output-canvas');
+    const ctx = outputCanvas.getContext('2d');
+    
+    const pixelSizeSlider = document.getElementById('pixel-size');
+    const pixelSizeNum = document.getElementById('pixel-size-num');
+    const colorCountSlider = document.getElementById('color-count');
+    const colorCountNum = document.getElementById('color-count-num');
+    const colorControlGroup = document.getElementById('color-control-group');
+    const downloadBtn = document.getElementById('download-btn');
+    const downloadVideoBtn = document.getElementById('download-video-btn');
+    const statusText = document.getElementById('status-text');
+
+    let fileType = null;
+    let isLoaded = false;
+    let animationFrameId = null;
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.style.borderColor = 'var(--primary-color)';
+    });
+    dropZone.addEventListener('dragleave', () => {
+        dropZone.style.borderColor = 'var(--border-color)';
+    });
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.style.borderColor = 'var(--border-color)';
+        if (e.dataTransfer.files.length > 0) {
+            loadfile(e.dataTransfer.files[0]);
+        }
+    });
+
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            loadfile(e.target.files[0]);
+        }
+    });
+
+    pixelSizeSlider.addEventListener('input', (e) => {
+        pixelSizeNum.value = e.target.value;
+        if (isLoaded && fileType === 'image') processImage();
+    });
+    pixelSizeNum.addEventListener('change', (e) => {
+        let val = Math.min(Math.max(parseInt(e.target.value) || 2, 2), 128);
+        pixelSizeNum.value = val;
+        pixelSizeSlider.value = val;
+        if (isLoaded && fileType === 'image') processImage();
+    });
+
+    colorCountSlider.addEventListener('input', (e) => {
+        colorCountNum.value = e.target.value;
+        if (isLoaded && fileType === 'image') processImage();
+    });
+    colorCountNum.addEventListener('change', (e) => {
+        let val = Math.min(Math.max(parseInt(e.target.value) || 2, 2), 1024);
+        colorCountNum.value = val;
+        colorCountSlider.value = val;
+        if (isLoaded && fileType === 'image') processImage();
+    });
+
+    downloadBtn.addEventListener('click', () => {
+        if (!isLoaded || fileType !== 'image') return;
+        const link = document.createElement('a');
+        link.download = 'pixel_art.png';
+        link.href = outputCanvas.toDataURL('image/png');
+        link.click();
+    });
+
+    function loadfile(file) {
+        if (animationFrameId) cancelAnimationFrame(animationFrameId);
+        
+        const url = URL.createObjectURL(file);
+        if (file.type.match('image.*')) {
+            fileType = 'image';
+            sourceVideo.style.display = 'none';
+            sourceVideo.pause();
+            sourceImg.style.display = 'block';
+            sourceImg.src = url;
+            downloadBtn.style.display = 'block';
+            downloadVideoBtn.style.display = 'none';
+            downloadBtn.disabled = true;
+            statusText.textContent = '';
+
+            colorControlGroup.classList.remove('disabled');
+            colorCountSlider.disabled = false;
+            colorCountNum.disabled = false;
+
+        } else if (file.type.match('video.*')) {
+            fileType = 'video';
+            sourceImg.style.display = 'none';
+            sourceVideo.style.display = 'block';
+            sourceVideo.src = url;
+            downloadBtn.style.display = 'none';
+            downloadVideoBtn.style.display = 'block';
+            downloadVideoBtn.disabled = false;
+            statusText.textContent = '動画が読み込まれました。再生するとモザイクプレビューが動きます。';
+
+            colorControlGroup.classList.add('disabled');
+            colorCountSlider.disabled = true;
+            colorCountNum.disabled = true;
+
+        } else {
+            alert('画像または動画ファイルを選択してください。');
+        }
+    }
+
+    sourceImg.onload = () => {
+        isLoaded = true;
+        downloadBtn.disabled = false;
+        processImage();
+    };
+
+    sourceVideo.addEventListener('play', () => {
+        isLoaded = true;
+        renderVideoFrame();
+    });
+
+    sourceVideo.addEventListener('pause', () => {
+        if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    });
+
+    sourceVideo.addEventListener('ended', () => {
+        if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    });
+
+    sourceVideo.addEventListener('loadedmetadata', () => {
+        outputCanvas.width = sourceVideo.videoWidth;
+        outputCanvas.height = sourceVideo.videoHeight;
+    });
+
+    function renderVideoFrame() {
+        if (sourceVideo.paused || sourceVideo.ended) return;
+        
+        const w = sourceVideo.videoWidth;
+        const h = sourceVideo.videoHeight;
+        if (outputCanvas.width !== w || outputCanvas.height !== h) {
+            outputCanvas.width = w;
+            outputCanvas.height = h;
+        }
+
+        const pixelSize = parseInt(pixelSizeSlider.value);
+        const tempCanvas = document.createElement('canvas');
+        const tempCtx = tempCanvas.getContext('2d');
+        const smallW = Math.max(1, Math.floor(w / pixelSize));
+        const smallH = Math.max(1, Math.floor(h / pixelSize));
+        
+        tempCanvas.width = smallW;
+        tempCanvas.height = smallH;
+        
+        tempCtx.drawImage(sourceVideo, 0, 0, smallW, smallH);
+
+        ctx.imageSmoothingEnabled = false;
+        ctx.clearRect(0, 0, w, h);
+        ctx.drawImage(tempCanvas, 0, 0, smallW, smallH, 0, 0, w, h);
+
+        animationFrameId = requestAnimationFrame(renderVideoFrame);
+    }
+
+    function processImage() {
+        if (fileType !== 'image') return;
+        const w = sourceImg.naturalWidth;
+        const h = sourceImg.naturalHeight;
+        
+        outputCanvas.width = w;
+        outputCanvas.height = h;
+
+        const pixelSize = parseInt(pixelSizeSlider.value);
+        const maxColors = parseInt(colorCountSlider.value);
+
+        const tempCanvas = document.createElement('canvas');
+        const tempCtx = tempCanvas.getContext('2d');
+        const smallW = Math.max(1, Math.floor(w / pixelSize));
+        const smallH = Math.max(1, Math.floor(h / pixelSize));
+        
+        tempCanvas.width = smallW;
+        tempCanvas.height = smallH;
+        
+        tempCtx.drawImage(sourceImg, 0, 0, smallW, smallH);
+        
+        const imgData = tempCtx.getImageData(0, 0, smallW, smallH);
+        const data = imgData.data;
+
+        const pixels = [];
+        for (let i = 0; i < data.length; i += 4) {
+            if (data[i+3] < 16) continue;
+            pixels.push([data[i], data[i+1], data[i+2]]);
+        }
+
+        const palette = generatePalette(pixels, maxColors);
+
+        for (let i = 0; i < data.length; i += 4) {
+            if (data[i+3] < 16) {
+                data[i+3] = 0;
+                continue;
+            }
+            const closestColor = findClosestColor(data[i], data[i+1], data[i+2], palette);
+            data[i] = closestColor[0];
+            data[i+1] = closestColor[1];
+            data[i+2] = closestColor[2];
+            data[i+3] = 255;
+        }
+
+        tempCtx.putImageData(imgData, 0, 0);
+
+        ctx.imageSmoothingEnabled = false;
+        ctx.clearRect(0, 0, w, h);
+        ctx.drawImage(tempCanvas, 0, 0, smallW, smallH, 0, 0, w, h);
+    }
+
+    function generatePalette(pixels, maxColors) {
+        if (pixels.length === 0) return [[0,0,0]];
+        const counts = {};
+        pixels.forEach(p => {
+            const r = p[0] & 0xFC;
+            const g = p[1] & 0xFC;
+            const b = p[2] & 0xFC;
+            const key = `${r},${g},${b}`;
+            counts[key] = (counts[key] || 0) + 1;
+        });
+
+        const sortedColors = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+        const palette = [];
+        for (let i = 0; i < Math.min(maxColors, sortedColors.length); i++) {
+            const rgb = sortedColors[i].split(',').map(Number);
+            palette.push([rgb[0] + 1, rgb[1] + 1, rgb[2] + 1]);
+        }
+
+        if (palette.length === 0) palette.push([0, 0, 0]);
+        return palette;
+    }
+
+    function findClosestColor(r, g, b, palette) {
+        let minDistance = Infinity;
+        let closest = palette[0];
+
+        for (let i = 0; i < palette.length; i++) {
+            const dist = Math.pow(r - palette[i][0], 2) + Math.pow(g - palette[i][1], 2) + Math.pow(b - palette[i][2], 2);
+            if (dist < minDistance) {
+                minDistance = dist;
+                closest = palette[i];
+            }
+        }
+        return closest;
+    }
+
+    downloadVideoBtn.addEventListener('click', async () => {
+        if (fileType !== 'video') return;
+        
+        downloadVideoBtn.disabled = true;
+        statusText.textContent = '動画を再生しながら書き出し中...（終了までお待ちください）';
+
+        sourceVideo.currentTime = 0;
+        sourceVideo.muted = false;
+        
+        try {
+            await sourceVideo.play();
+        } catch (e) {
+            sourceVideo.muted = true;
+            await sourceVideo.play();
+        }
+
+        const canvasStream = outputCanvas.captureStream(30);
+        let combinedStream = canvasStream;
+
+        if (typeof sourceVideo.captureStream === 'function') {
+            try {
+                const videoStream = sourceVideo.captureStream();
+                const audioTracks = videoStream.getAudioTracks();
+                if (audioTracks.length > 0) {
+                    audioTracks.forEach(track => combinedStream.addTrack(track));
+                }
+            } catch (err) {
+                console.warn('音声トラックの結合に失敗しました:', err);
+            }
+        } else if (typeof sourceVideo.mozCaptureStream === 'function') {
+            try {
+                const videoStream = sourceVideo.mozCaptureStream();
+                const audioTracks = videoStream.getAudioTracks();
+                if (audioTracks.length > 0) {
+                    audioTracks.forEach(track => combinedStream.addTrack(track));
+                }
+            } catch (err) {
+                console.warn('音声トラックの結合に失敗しました:', err);
+            }
+        }
+
+        let mimeType = 'video/mp4';
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+            mimeType = 'video/webm;codecs=vp9,opus';
+            if (!MediaRecorder.isTypeSupported(mimeType)) {
+                mimeType = 'video/webm';
+            }
+        }
+
+        let recorder;
+        try {
+            recorder = new MediaRecorder(combinedStream, { 
+                mimeType: mimeType,
+                videoBitsPerSecond: 5000000 
+            });
+        } catch (e) {
+            try {
+                recorder = new MediaRecorder(combinedStream);
+            } catch (err) {
+                alert('お使いのブラウザは動画の録画・書き出しに対応していません。');
+                downloadVideoBtn.disabled = false;
+                statusText.textContent = '';
+                return;
+            }
+        }
+
+        const chunks = [];
+        recorder.ondataavailable = (e) => {
+            if (e.data.size > 0) chunks.push(e.data);
+        };
+
+        recorder.onstop = () => {
+            const blob = new Blob(chunks, { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
+            link.download = `mosaic_video.${ext}`;
+            link.click();
+
+            downloadVideoBtn.disabled = false;
+            statusText.textContent = '書き出しが完了しました！';
+        };
+
+        recorder.start();
+
+        sourceVideo.onended = () => {
+            sourceVideo.pause();
+            if (recorder.state !== 'inactive') {
+                recorder.stop();
+            }
+            sourceVideo.onended = null;
+        };
+    });
+</script>
+
+</body>
+</html>
